@@ -106,7 +106,14 @@ function scoreGame(game, prefs) {
 
 async function rawgFetch(params) {
   if (!RAWG_KEY) {
-    return { results: [], _note: 'RAWG_KEY missing' };
+    const err = new Error('RAWG_KEY missing');
+    err.status = 500;
+    err.data = {
+      error: 'rawg_key_missing',
+      detail: 'RAWG_KEY missing',
+      _note: 'Set the RAWG_KEY environment variable before fetching from RAWG.'
+    };
+    throw err;
   }
   // Strip undefined or null
   const clean = Object.fromEntries(Object.entries(params).filter(([_,v]) => v !== undefined && v !== null && v !== ''));
@@ -191,8 +198,18 @@ app.get('/api/games', async (req, res) => {
 
     res.json({ range: { start, end }, count: scored.length, results: scored, _debug: data?._debug });
   } catch (e) {
-    console.error(e?.response?.data || e.message);
-    res.status(500).json({ error: 'fetch_failed', detail: e?.response?.data || e.message });
+    const status = e.status || e.response?.status || 500;
+    const data = (e.data && typeof e.data === 'object')
+      ? { ...e.data }
+      : (e.response?.data && typeof e.response.data === 'object')
+        ? { ...e.response.data }
+        : null;
+    const detail = data?.detail || e.message || 'fetch_failed';
+    const payload = data || {};
+    if (!payload.error) payload.error = 'fetch_failed';
+    if (!payload.detail) payload.detail = detail;
+    console.error(payload);
+    res.status(status).json(payload);
   }
 });
 
@@ -261,8 +278,18 @@ app.post('/api/daily/run', async (req, res) => {
 
     res.json({ ok: true, saved: file, count: scored.length, top5: scored.slice(0,5) });
   } catch (e) {
-    console.error(e?.response?.data || e.message);
-    res.status(500).json({ error: 'daily_failed', detail: e?.response?.data || e.message });
+    const status = e.status || e.response?.status || 500;
+    const data = (e.data && typeof e.data === 'object')
+      ? { ...e.data }
+      : (e.response?.data && typeof e.response.data === 'object')
+        ? { ...e.response.data }
+        : null;
+    const detail = data?.detail || e.message || 'daily_failed';
+    const payload = data || {};
+    if (!payload.error) payload.error = 'daily_failed';
+    if (!payload.detail) payload.detail = detail;
+    console.error(payload);
+    res.status(status).json(payload);
   }
 });
 
