@@ -12,7 +12,18 @@ app.use(morgan('tiny'));
 app.use(express.json());
 app.use(express.static('public'));
 
+function normaliseTag(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value.toLowerCase();
+  if (typeof value === 'object') {
+    if (value.name) return String(value.name).toLowerCase();
+    if (value.slug) return String(value.slug).toLowerCase();
+  }
+  return String(value).toLowerCase();
+}
+
 const RAWG_KEY = process.env.RAWG_KEY;
+const RAWG_SAMPLE_FILE = path.join(process.cwd(), 'data', 'sample-rawg-response.json');
 const PORT = process.env.PORT || 5173;
 const BASE_URL = 'https://api.rawg.io/api/games';
 
@@ -165,18 +176,111 @@ function scoreGame(game, prefs) {
 }
 
 async function rawgFetch(params) {
-  if (!RAWG_KEY) {
-    const err = new Error('RAWG_KEY missing');
-    err.status = 500;
-    err.data = {
-      error: 'rawg_key_missing',
-      detail: 'RAWG_KEY missing',
-      _note: 'Set the RAWG_KEY environment variable before fetching from RAWG.'
-    };
-    throw err;
-  }
   // Strip undefined or null
   const clean = Object.fromEntries(Object.entries(params).filter(([_,v]) => v !== undefined && v !== null && v !== ''));
+
+  if (!RAWG_KEY) {
+    if (!fs.existsSync(RAWG_SAMPLE_FILE)) {
+      const err = new Error('RAWG sample data unavailable');
+      err.status = 503;
+      err.data = {
+        error: 'rawg_offline_unavailable',
+        detail: 'RAWG sample data unavailable. Provide RAWG_KEY for live data.',
+        _note: `Missing fallback dataset at ${RAWG_SAMPLE_FILE}`
+      };
+      throw err;
+    }
+
+    let sample;
+    try {
+      sample = JSON.parse(fs.readFileSync(RAWG_SAMPLE_FILE, 'utf-8'));
+    } catch (readErr) {
+      const err = new Error('Failed to read RAWG sample data');
+      err.status = 500;
+      err.data = {
+        error: 'rawg_offline_unavailable',
+        detail: 'Failed to read RAWG sample data. Provide RAWG_KEY for live data.',
+        _note: readErr.message || 'Unknown file read error'
+      };
+      throw err;
+    }
+
+    let results = Array.isArray(sample.results) ? sample.results.map(g => ({ ...g })) : [];
+    const originalResults = results.slice();
+    let ignoredDateFilter = false;
+
+    if (clean.dates) {
+      const [startStr, endStr] = String(clean.dates).split(',');
+      const start = startStr ? new Date(startStr) : null;
+      const end = endStr ? new Date(endStr) : null;
+      if (start || end) {
+        results = results.filter(g => {
+          if (!g.released) return false;
+          const rel = new Date(g.released);
+          if (Number.isNaN(rel.getTime())) return false;
+          if (start && rel < start) return false;
+          if (end && rel > end) return false;
+          return true;
+        });
+        if (!results.length) {
+          results = originalResults.slice();
+          ignoredDateFilter = true;
+        }
+      }
+    }
+
+    if (clean.platforms) {
+      const ids = String(clean.platforms).split(',').map(p => Number(p.trim())).filter(n => !Number.isNaN(n));
+      if (ids.length) {
+        const allowed = new Set(ids);
+        results = results.filter(g => (g.platforms || []).some(p => allowed.has(Number(p?.platform?.id))));
+      }
+    }
+
+    if (clean.tags) {
+      const wanted = String(clean.tags).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+      if (wanted.length) {
+        results = results.filter(g => {
+          const tagNames = [
+            ...(g.tags || []).map(normaliseTag),
+            ...(g.genres || []).map(normaliseTag)
+          ].filter(Boolean);
+          return wanted.every(tag => tagNames.includes(tag));
+        });
+      }
+    }
+
+    const ordering = clean.ordering || '-rating';
+    const desc = ordering.startsWith('-');
+    const field = ordering.replace(/^[-+]/, '') || 'rating';
+    const getValue = g => {
+      if (field === 'released') {
+        return g.released ? new Date(g.released).getTime() : 0;
+      }
+      return g[field] ?? 0;
+    };
+    results.sort((a, b) => {
+      const av = getValue(a);
+      const bv = getValue(b);
+      if (av === bv) return 0;
+      return (av > bv ? 1 : -1) * (desc ? -1 : 1);
+    });
+
+    const total = results.length;
+    const size = Number(clean.page_size) || 30;
+    results = results.slice(0, Math.max(0, Math.min(size, results.length)));
+
+    const notes = [sample._note || 'Using offline RAWG sample data. Set RAWG_KEY for live API results.'];
+    if (ignoredDateFilter) notes.push('Date filters relaxed for offline data.');
+
+    return {
+      count: total,
+      results,
+      _note: notes.join(' '),
+      _debug: { source: 'offline_sample', params: clean, ignoredDateFilter }
+    };
+  }
+
   const url = BASE_URL;
   const query = { key: RAWG_KEY, ...clean };
   const { data } = await axios.get(url, { params: query });
@@ -185,7 +289,11 @@ async function rawgFetch(params) {
 
 // Health/debug endpoints
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, RAWG_KEY_present: Boolean(RAWG_KEY) });
+  res.json({
+    ok: true,
+    RAWG_KEY_present: Boolean(RAWG_KEY),
+    offlineSampleAvailable: fs.existsSync(RAWG_SAMPLE_FILE)
+  });
 });
 
 app.get('/api/debug', async (req, res) => {
@@ -256,7 +364,7 @@ app.get('/api/games', async (req, res) => {
     const scored = filtered.map(g => ({ ...g, _score: scoreGame(g, prefs) }))
                            .sort((a,b) => b._score - a._score);
 
-    res.json({ range: { start, end }, count: scored.length, results: scored, _debug: data?._debug });
+    res.json({ range: { start, end }, count: scored.length, results: scored, _debug: data?._debug, _note: data?._note });
   } catch (e) {
     const status = e.status || e.response?.status || 500;
     const data = (e.data && typeof e.data === 'object')
