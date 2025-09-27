@@ -58,28 +58,98 @@ function resolvePlatforms(input) {
 }
 
 // --- simple JSON "db" ---
-const DATA_DIR = path.resolve('data');
-const DAILY_DIR = path.join(DATA_DIR, 'daily');
-const DB_FILE = path.join(DATA_DIR, 'db.json');
+const DEFAULT_DB = () => ({
+  preferences: {
+    weights: { rating: 0.5, tagLike: 4, tagSkip: -2, recency: 0.1 },
+    likes: {},
+    skips: {},
+    hiddenSlugs: {}
+  }
+});
+
+const DEFAULT_DATA_ROOT = path.resolve(process.env.DATA_DIR || 'data');
+const TMP_ROOT = path.join(process.env.TMPDIR || '/tmp', 'idle-game-radar');
+
+const PATHS = {
+  root: DEFAULT_DATA_ROOT,
+  daily: path.join(DEFAULT_DATA_ROOT, 'daily'),
+  db: path.join(DEFAULT_DATA_ROOT, 'db.json')
+};
+
+function setDataRoot(root) {
+  const resolved = path.resolve(root);
+  PATHS.root = resolved;
+  PATHS.daily = path.join(resolved, 'daily');
+  PATHS.db = path.join(resolved, 'db.json');
+}
+
+function initDataTree(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(PATHS.daily)) fs.mkdirSync(PATHS.daily, { recursive: true });
+  if (!fs.existsSync(PATHS.db)) {
+    fs.writeFileSync(PATHS.db, JSON.stringify(DEFAULT_DB(), null, 2));
+  }
+}
 
 function ensureData() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-  if (!fs.existsSync(DAILY_DIR)) fs.mkdirSync(DAILY_DIR, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({
-      preferences: {
-        weights: { rating: 0.5, tagLike: 4, tagSkip: -2, recency: 0.1 },
-        likes: {},
-        skips: {},
-        hiddenSlugs: {}
-      }
-    }, null, 2));
+  try {
+    initDataTree(PATHS.root);
+  } catch (err) {
+    if (err?.code === 'EROFS' || err?.code === 'EACCES') {
+      setDataRoot(TMP_ROOT);
+      initDataTree(PATHS.root);
+      console.warn(`Data directory switched to ${PATHS.root} due to ${err.code}`);
+    } else {
+      throw err;
+    }
   }
 }
 ensureData();
 
-function readDB() { return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8')); }
-function writeDB(db) { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2)); }
+function safeRead(file) {
+  try {
+    return fs.readFileSync(file, 'utf-8');
+  } catch (err) {
+    if (err?.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+function readDB() {
+  const text = safeRead(PATHS.db);
+  if (!text) {
+    const defaults = DEFAULT_DB();
+    try {
+      writeDB(defaults);
+    } catch (err) {
+      console.error('Failed to write default DB', err);
+    }
+    return defaults;
+  }
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    console.error('Failed to parse DB file, resetting', err);
+    const defaults = DEFAULT_DB();
+    writeDB(defaults);
+    return defaults;
+  }
+}
+
+function writeDB(db) {
+  try {
+    fs.writeFileSync(PATHS.db, JSON.stringify(db, null, 2));
+  } catch (err) {
+    if ((err?.code === 'EROFS' || err?.code === 'EACCES') && PATHS.root !== TMP_ROOT) {
+      setDataRoot(TMP_ROOT);
+      initDataTree(PATHS.root);
+      fs.writeFileSync(PATHS.db, JSON.stringify(db, null, 2));
+      console.warn(`DB write fallback to ${PATHS.db} due to ${err.code}`);
+    } else {
+      throw err;
+    }
+  }
+}
 
 function scoreGame(game, prefs) {
   const w = prefs.weights || {};
@@ -125,7 +195,17 @@ async function rawgFetch(params) {
 
 // Health/debug endpoints
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, RAWG_KEY_present: Boolean(RAWG_KEY) });
+  let writable = false;
+  try {
+    fs.accessSync(PATHS.root, fs.constants.W_OK);
+    writable = true;
+  } catch {}
+  res.json({
+    ok: true,
+    RAWG_KEY_present: Boolean(RAWG_KEY),
+    dataDir: PATHS.root,
+    dataWritable: writable
+  });
 });
 
 app.get('/api/debug', async (req, res) => {
@@ -273,7 +353,7 @@ app.post('/api/daily/run', async (req, res) => {
                          .sort((a,b) => b._score - a._score);
 
     const stamp = end;
-    const file = path.join(DAILY_DIR, `${stamp}.json`);
+    const file = path.join(PATHS.daily, `${stamp}.json`);
     fs.writeFileSync(file, JSON.stringify({ stamp, start, end, results: scored, _debug: data?._debug }, null, 2));
 
     res.json({ ok: true, saved: file, count: scored.length, top5: scored.slice(0,5) });
@@ -293,6 +373,8 @@ app.post('/api/daily/run', async (req, res) => {
   }
 });
 
-app.use('/data/daily', express.static(path.resolve('data/daily')));
+app.use('/data/daily', (req, res, next) => {
+  return express.static(PATHS.daily)(req, res, next);
+});
 
 app.listen(PORT, () => console.log(`Game Radar Pro running http://localhost:${PORT}`));
