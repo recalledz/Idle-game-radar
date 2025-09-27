@@ -58,28 +58,88 @@ function resolvePlatforms(input) {
 }
 
 // --- simple JSON "db" ---
-const DATA_DIR = path.resolve('data');
-const DAILY_DIR = path.join(DATA_DIR, 'daily');
-const DB_FILE = path.join(DATA_DIR, 'db.json');
+const DEFAULT_DB = {
+  preferences: {
+    weights: { rating: 0.5, tagLike: 4, tagSkip: -2, recency: 0.1 },
+    likes: {},
+    skips: {},
+    hiddenSlugs: {}
+  }
+};
+
+const FALLBACK_DATA_DIR = path.join(process.env.TMPDIR || '/tmp', 'idle-game-radar');
+
+let DATA_DIR = process.env.DATA_DIR || path.resolve('data');
+let DAILY_DIR = path.join(DATA_DIR, 'daily');
+let DB_FILE = path.join(DATA_DIR, 'db.json');
+let STORAGE_MODE = 'disk';
+let MEMORY_DB = null;
+
+function cloneDefault() {
+  return JSON.parse(JSON.stringify(DEFAULT_DB));
+}
+
+function tryInitDirectory(baseDir) {
+  fs.mkdirSync(baseDir, { recursive: true });
+  const dailyDir = path.join(baseDir, 'daily');
+  fs.mkdirSync(dailyDir, { recursive: true });
+  const dbFile = path.join(baseDir, 'db.json');
+  if (!fs.existsSync(dbFile)) {
+    fs.writeFileSync(dbFile, JSON.stringify(DEFAULT_DB, null, 2));
+  }
+  DATA_DIR = baseDir;
+  DAILY_DIR = dailyDir;
+  DB_FILE = dbFile;
+  STORAGE_MODE = 'disk';
+  MEMORY_DB = null;
+}
 
 function ensureData() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
-  if (!fs.existsSync(DAILY_DIR)) fs.mkdirSync(DAILY_DIR, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({
-      preferences: {
-        weights: { rating: 0.5, tagLike: 4, tagSkip: -2, recency: 0.1 },
-        likes: {},
-        skips: {},
-        hiddenSlugs: {}
-      }
-    }, null, 2));
+  const candidates = [DATA_DIR];
+  if (!candidates.includes(FALLBACK_DATA_DIR)) {
+    candidates.push(FALLBACK_DATA_DIR);
   }
+
+  for (const dir of candidates) {
+    try {
+      tryInitDirectory(dir);
+      return;
+    } catch (err) {
+      console.warn(`Failed to initialise data directory at ${dir}: ${err.code || err.message}`);
+    }
+  }
+
+  console.warn('Falling back to in-memory preference store. Changes will not persist.');
+  STORAGE_MODE = 'memory';
+  MEMORY_DB = cloneDefault();
 }
 ensureData();
 
-function readDB() { return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8')); }
-function writeDB(db) { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2)); }
+function readDB() {
+  if (STORAGE_MODE === 'memory') return MEMORY_DB;
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+  } catch (err) {
+    console.warn(`Failed to read DB file, switching to in-memory store: ${err.code || err.message}`);
+    STORAGE_MODE = 'memory';
+    MEMORY_DB = cloneDefault();
+    return MEMORY_DB;
+  }
+}
+
+function writeDB(db) {
+  if (STORAGE_MODE === 'memory') {
+    MEMORY_DB = db;
+    return;
+  }
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  } catch (err) {
+    console.warn(`Failed to write DB file, switching to in-memory store: ${err.code || err.message}`);
+    STORAGE_MODE = 'memory';
+    MEMORY_DB = db;
+  }
+}
 
 function scoreGame(game, prefs) {
   const w = prefs.weights || {};
@@ -249,6 +309,12 @@ app.post('/api/seen', (req, res) => {
 
 app.post('/api/daily/run', async (req, res) => {
   try {
+    if (STORAGE_MODE !== 'disk') {
+      return res.status(503).json({
+        error: 'storage_unavailable',
+        detail: 'Daily snapshots are disabled because persistent storage is unavailable in this environment.'
+      });
+    }
     const { daysBack = 1, platforms = '', tags = '', pageSize = 60 } = req.body || {};
     const now = new Date();
     const end = now.toISOString().split('T')[0];
@@ -293,6 +359,19 @@ app.post('/api/daily/run', async (req, res) => {
   }
 });
 
-app.use('/data/daily', express.static(path.resolve('data/daily')));
+const dailyStatic = express.static(DAILY_DIR);
+app.use('/data/daily', (req, res, next) => {
+  if (STORAGE_MODE !== 'disk') {
+    return res.status(503).json({
+      error: 'storage_unavailable',
+      detail: 'Daily exports are disabled because persistent storage is unavailable in this environment.'
+    });
+  }
+  return dailyStatic(req, res, next);
+});
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
+});
 
 app.listen(PORT, () => console.log(`Game Radar Pro running http://localhost:${PORT}`));
