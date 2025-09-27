@@ -1,0 +1,13 @@
+{
+  "preferences": {
+    "weights": {
+      "rating": 0.5,
+      "tagLike": 4,
+      "tagSkip": -2,
+      "recency": 0.1
+    },
+    "likes": {},
+    "skips": {},
+    "hiddenSlugs": {}
+  }
+}
