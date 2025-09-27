@@ -34,8 +34,28 @@ function badge(text){
 
 async function fetchJSON(url, opts) {
   const res = await fetch(url, opts);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const text = await res.text();
+  let data;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+  if (!res.ok) {
+    const message = typeof data === 'object' && data !== null
+      ? (data.detail || data.error || JSON.stringify(data))
+      : (text || `HTTP ${res.status}`);
+    const err = new Error(message);
+    err.status = res.status;
+    if (typeof data === 'object' && data !== null) err.data = data;
+    throw err;
+  }
+  if (typeof data === 'string') {
+    throw new Error(data || 'Unexpected response');
+  }
+  return data ?? {};
 }
 
 async function loadPreferences(){
@@ -147,6 +167,7 @@ function renderGrid(games){
 
 async function doFetch(){
   notice.classList.add('hidden');
+  notice.textContent = '';
   try {
     const url = `/api/games?${new URLSearchParams({
       daysBack: daysBack.value,
@@ -158,15 +179,23 @@ async function doFetch(){
     }).toString()}`;
     const data = await fetchJSON(url);
     rangeEl.textContent = `${data.range.start} → ${data.range.end} • ${data.count} games`;
-    // Show debug hint if empty
-    if (data.count === 0 && data._debug){
+    const notes = [];
+    if (data._note) notes.push(data._note);
+    if (data.count === 0 && data._debug) {
+      notes.push(`Debug: RAWG query ${JSON.stringify(data._debug.query)}`);
+    }
+    if (notes.length) {
       notice.classList.remove('hidden');
-      notice.textContent = `Debug: RAWG query ${JSON.stringify(data._debug.query)}`;
+      notice.textContent = notes.join(' • ');
     }
     renderGrid(data.results);
   } catch (e) {
     notice.classList.remove('hidden');
-    notice.textContent = 'Error: ' + e.message + ' • Tip: check /api/health';
+    const parts = [];
+    if (e.data?.detail) parts.push(e.data.detail);
+    else if (e.message) parts.push(e.message);
+    if (e.data?._note) parts.push(e.data._note);
+    notice.textContent = `Error: ${parts.join(' • ') || 'Request failed'} • Tip: set RAWG_KEY and check /api/health`;
   }
 }
 
