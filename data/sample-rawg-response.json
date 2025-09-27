@@ -1,0 +1,129 @@
+{
+  "count": 5,
+  "_note": "Offline RAWG snapshot captured for local development.",
+  "results": [
+    {
+      "id": 916224,
+      "slug": "vampire-survivors",
+      "name": "Vampire Survivors",
+      "released": "2022-10-20",
+      "rating": 4.45,
+      "ratings_count": 2543,
+      "background_image": "https://media.rawg.io/media/games/5a2/5a2fd1897c93a46f61445c69c9625d28.jpg",
+      "tags": [
+        { "id": 1, "name": "Roguelike" },
+        { "id": 2, "name": "Bullet Hell" },
+        { "id": 3, "name": "Indie" }
+      ],
+      "genres": [
+        { "id": 51, "name": "Indie" },
+        { "id": 83, "name": "Action" }
+      ],
+      "platforms": [
+        { "platform": { "id": 4, "name": "PC" } },
+        { "platform": { "id": 7, "name": "Nintendo Switch" } },
+        { "platform": { "id": 21, "name": "Android" } },
+        { "platform": { "id": 3, "name": "iOS" } }
+      ]
+    },
+    {
+      "id": 1072932,
+      "slug": "balatro",
+      "name": "Balatro",
+      "released": "2024-02-20",
+      "rating": 4.6,
+      "ratings_count": 1200,
+      "background_image": "https://media.rawg.io/media/games/7af/7afdcc65e49154b66188a3406c066f63.jpg",
+      "tags": [
+        { "id": 4, "name": "Card Game" },
+        { "id": 5, "name": "Deckbuilding" },
+        { "id": 6, "name": "Singleplayer" }
+      ],
+      "genres": [
+        { "id": 51, "name": "Indie" },
+        { "id": 15, "name": "Strategy" }
+      ],
+      "platforms": [
+        { "platform": { "id": 4, "name": "PC" } },
+        { "platform": { "id": 187, "name": "PlayStation 5" } },
+        { "platform": { "id": 18, "name": "PlayStation 4" } },
+        { "platform": { "id": 186, "name": "Xbox Series S/X" } },
+        { "platform": { "id": 1, "name": "Xbox One" } },
+        { "platform": { "id": 7, "name": "Nintendo Switch" } }
+      ]
+    },
+    {
+      "id": 28199,
+      "slug": "slay-the-spire",
+      "name": "Slay the Spire",
+      "released": "2019-01-23",
+      "rating": 4.45,
+      "ratings_count": 3460,
+      "background_image": "https://media.rawg.io/media/games/57e/57e94890b5e0e72c6be65482af2f774e.jpg",
+      "tags": [
+        { "id": 7, "name": "Deckbuilding" },
+        { "id": 8, "name": "Roguelike" },
+        { "id": 9, "name": "Turn-Based" }
+      ],
+      "genres": [
+        { "id": 51, "name": "Indie" },
+        { "id": 15, "name": "Strategy" },
+        { "id": 83, "name": "Action" }
+      ],
+      "platforms": [
+        { "platform": { "id": 4, "name": "PC" } },
+        { "platform": { "id": 7, "name": "Nintendo Switch" } },
+        { "platform": { "id": 187, "name": "PlayStation 5" } },
+        { "platform": { "id": 18, "name": "PlayStation 4" } },
+        { "platform": { "id": 1, "name": "Xbox One" } },
+        { "platform": { "id": 186, "name": "Xbox Series S/X" } }
+      ]
+    },
+    {
+      "id": 326242,
+      "slug": "against-the-storm",
+      "name": "Against the Storm",
+      "released": "2023-12-08",
+      "rating": 4.4,
+      "ratings_count": 640,
+      "background_image": "https://media.rawg.io/media/games/5e9/5e9cc19245d8c8f6bf0e8a206a69d493.jpg",
+      "tags": [
+        { "id": 10, "name": "City Builder" },
+        { "id": 11, "name": "Roguelike" },
+        { "id": 12, "name": "Strategy" }
+      ],
+      "genres": [
+        { "id": 15, "name": "Strategy" },
+        { "id": 14, "name": "Simulation" }
+      ],
+      "platforms": [
+        { "platform": { "id": 4, "name": "PC" } }
+      ]
+    },
+    {
+      "id": 326292,
+      "slug": "dave-the-diver",
+      "name": "DAVE THE DIVER",
+      "released": "2023-06-28",
+      "rating": 4.35,
+      "ratings_count": 1900,
+      "background_image": "https://media.rawg.io/media/games/09c/09c3751d19d2c0b0e1d6d3c878d57be7.jpg",
+      "tags": [
+        { "id": 13, "name": "Fishing" },
+        { "id": 14, "name": "Pixel Graphics" },
+        { "id": 15, "name": "Singleplayer" }
+      ],
+      "genres": [
+        { "id": 51, "name": "Indie" },
+        { "id": 3, "name": "Adventure" },
+        { "id": 14, "name": "Simulation" }
+      ],
+      "platforms": [
+        { "platform": { "id": 4, "name": "PC" } },
+        { "platform": { "id": 7, "name": "Nintendo Switch" } }
+      ]
+    }
+  ],
+  "next": null,
+  "previous": null
+}
